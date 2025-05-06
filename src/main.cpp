@@ -4,7 +4,7 @@
 #include <CGAL/Polygon_mesh_processing/IO/polygon_mesh_io.h>
 #include <CGAL/Polygon_mesh_processing/transform.h>
 #include <CGAL/Polygon_mesh_processing/orientation.h>
-#include <CGAL/Polygon_mesh_processing/repair.h> // For repair functions
+#include <CGAL/Polygon_mesh_processing/repair.h> 
 #include <CGAL/Aff_transformation_3.h>
 #include <CGAL/Vector_3.h>
 #include <CGAL/Point_3.h>
@@ -19,7 +19,7 @@
 #include <iostream>
 #include <vector>
 #include <string>
-#include <cmath> // For std::sqrt, std::cos, std::sin
+#include <cmath> 
 
 // Define Kernel and Mesh types
 typedef CGAL::Exact_predicates_exact_constructions_kernel Kernel;
@@ -35,7 +35,7 @@ namespace CGALIO = CGAL::Polygon_mesh_processing::IO;
 namespace po = boost::program_options;
 namespace fs = std::filesystem;
 
-// --- Helper Function for Cube Generation ---
+
 Mesh make_triangulated_cube(const Point_3& center, const Vector_3& dimensions) {
     Mesh cube_mesh;
     FT hx = dimensions.x() / FT(2);
@@ -82,7 +82,12 @@ Mesh make_triangulated_cube(const Point_3& center, const Vector_3& dimensions) {
 }
 
 
-// --- Helper Function for Cylinder Generation (Using Circle_3 + Internal Repair) ---
+// Cylinder Generation (Using Circle_3 + Internal Repair) 
+// NB: This was unusually tricky to get right, with many edge cases.
+// Perhaps due to the num_segments being too high or low, or the cylinder being too small.
+// The CGAL library had some issues with degenerate faces and non-manifold edges.
+// Hence, a known working Cylinder STL is used for pegs/holes.
+// See: ../assets/peg.stl
 Mesh make_cylinder(const Point_3& base_center, const Point_3& top_center, const FT radius, const int num_segments = 32) {
     Mesh cylinder;
 
@@ -146,7 +151,7 @@ Mesh make_cylinder(const Point_3& base_center, const Point_3& top_center, const 
         cylinder.add_face(top_center_idx, top_vertices[next_i], top_vertices[i]);
     }
 
-    // --- Add Repair Steps INSIDE make_cylinder ---
+    // Add Repair Steps INSIDE make_cylinder
     // 1. Remove degenerate faces first
     std::size_t removed_deg_faces = CGAL::Polygon_mesh_processing::remove_degenerate_faces(cylinder);
     if (removed_deg_faces > 0) {
@@ -203,7 +208,6 @@ Mesh load_cylinder_stl(const std::string& stl_path) {
 
 
 int main(int argc, char* argv[]) {
-    // --- Program Options ---
     po::options_description desc("Allowed options");
     desc.add_options()
         ("help,h", "produce help message")
@@ -236,7 +240,7 @@ int main(int argc, char* argv[]) {
     FT peg_height = FT(vm["peg_height"].as<double>());
     FT corner_offset = FT(vm["corner_offset"].as<double>());
 
-    // --- Create Output Directory ---
+    // Create Output Directory if it doesn't exist
     try {
         fs::create_directories(output_dir);
         std::cout << "Using output directory: " << output_dir << std::endl;
@@ -245,7 +249,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // --- Load Input Mesh ---
+    // Load Input Mesh for the part to be molded
     std::cout << "Input STL: " << input_file << std::endl;
     Mesh input_mesh;
     std::cout << "Loading mesh: " << input_file << "..." << std::endl;
@@ -257,7 +261,7 @@ int main(int argc, char* argv[]) {
               << ", Faces: " << input_mesh.number_of_faces() << std::endl;
 
 
-    // --- Calculate Positions and Dimensions ---
+    // Calculate Positions and Dimensions
     std::cout << "Calculating positions..." << std::endl;
     Iso_cuboid_3 original_bbox = CGAL::bounding_box(input_mesh.points().begin(), input_mesh.points().end());
     Point_3 original_min_bounds = original_bbox.min();
@@ -273,7 +277,7 @@ int main(int argc, char* argv[]) {
     Vector_3 box_dims = mesh_size + Vector_3(padding * FT(2), padding * FT(2), padding * FT(2));
     std::cout << "  Box dimensions with padding: " << box_dims << std::endl;
 
-    // --- Translate Input Mesh ---
+    // Translate Input Mesh
     Vector_3 translate_vector(
         -original_center.x(),
         -original_center.y(),
@@ -289,7 +293,7 @@ int main(int argc, char* argv[]) {
     std::cout << "  New Center: " << CGAL::midpoint(translated_bbox.min(), translated_bbox.max()) << std::endl;
 
 
-    // --- Create Mold Boxes ---
+    // Create Mold Box Halves, Split Plane, and Pegs
     FT split_z = padding + mesh_size.z() / FT(2); // Z-coordinate of the splitting plane
     std::cout << "Creating separate top and bottom mold halves with cavities..." << std::endl;
     std::cout << "  Split plane z position: " << split_z << std::endl;
@@ -307,7 +311,7 @@ int main(int argc, char* argv[]) {
     Mesh top_box = make_triangulated_cube(top_box_center, top_box_dims);
     std::cout << "  Top box center: " << top_box_center << ", dims: " << top_box_dims << std::endl;
 
-    // --- Ensure Orientations are Correct ---
+    // Ensure Orientations are Correct
     std::cout << "Checking and fixing mesh orientations..." << std::endl;
     if (!PMP::is_outward_oriented(top_box)) {
         std::cout << "  Fixing top box orientation..." << std::endl;
@@ -322,7 +326,7 @@ int main(int argc, char* argv[]) {
         PMP::orient(input_mesh);
     }
 
-    // --- Create Bottom Half Mold ---
+    // Create Bottom Half Mold 
     std::cout << "Creating bottom mold half..." << std::endl;
     Mesh bottom_half;
     try {
@@ -342,7 +346,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // --- Create Top Half Mold ---
+    // Create Top Half Mold
     std::cout << "Creating top mold half..." << std::endl;
     Mesh top_half;
     try {
@@ -362,11 +366,11 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // --- Save Initial Mold Halves (Optional Debug) ---
+    // Save Initial Mold Halves (Optional Debug)
     // CGALIO::write_STL(fs::path(output_dir) / "mold_top_initial_cpp.stl", top_half);
     // CGALIO::write_STL(fs::path(output_dir) / "mold_bottom_initial_cpp.stl", bottom_half);
 
-    // --- Prepare Pegs and Holes --- // NO ROTATION OF top_half HERE
+    // Prepare Pegs and Holes, and Add to Mold Halves
     std::cout << "Adding alignment pegs and holes..." << std::endl;
     std::vector<Mesh> pegs;
     std::vector<Mesh> holes;
@@ -396,8 +400,6 @@ int main(int argc, char* argv[]) {
         CGAL::Aff_transformation_3<Kernel> translate(CGAL::TRANSLATION, translation);
         PMP::transform(translate, peg);
 
-        // NO INDIVIDUAL PEG ROTATION HERE
-
         if (!CGAL::is_closed(peg)) {
              std::cerr << "    ERROR: Peg " << peg_idx_gen << " STL is NOT closed after loading/transforming." << std::endl;
              peg_idx_gen++;
@@ -406,9 +408,9 @@ int main(int argc, char* argv[]) {
         if (!PMP::is_outward_oriented(peg)) PMP::orient(peg);
 
         // *** DEBUG: Save individual translated peg ***
-        std::string peg_filename = "debug_peg_" + std::to_string(peg_idx_gen) + ".stl";
-        CGAL::IO::write_STL(fs::path(output_dir) / peg_filename, peg);
-        // *** END DEBUG ***
+        //std::string peg_filename = "debug_peg_" + std::to_string(peg_idx_gen) + ".stl";
+        //CGAL::IO::write_STL(fs::path(output_dir) / peg_filename, peg);
+        
 
         pegs.push_back(peg);
         peg_idx_gen++;
@@ -442,7 +444,7 @@ int main(int argc, char* argv[]) {
     std::cout << "  Generated " << pegs.size() << " pegs and " << holes.size() << " holes." << std::endl;
 
 
-    // --- Perform Boolean Operations ---
+    // Perform Boolean Operations 
     Mesh top_with_pegs = top_half; // Start with the ORIGINAL top half
     Mesh bottom_with_holes = bottom_half; // Start with the original bottom half
 
@@ -497,13 +499,12 @@ int main(int argc, char* argv[]) {
     std::cout << "Alignment features processing finished." << std::endl;
 
     // *** DEBUG: Save top_with_pegs BEFORE rotation ***
-    if (!any_peg_failed) { // Only save if unions seemed okay
-         CGAL::IO::write_STL(fs::path(output_dir) / "debug_top_with_pegs_pre_rotation.stl", top_with_pegs);
-    }
-    // *** END DEBUG ***
+    //if (!any_peg_failed) { // Only save if unions seemed okay
+    //     CGAL::IO::write_STL(fs::path(output_dir) / "debug_top_with_pegs_pre_rotation.stl", top_with_pegs);
+    //}
 
 
-    // --- Rotate the Top Mold Half WITH PEGS --- NOW, after adding pegs
+    // Rotate the Top Mold Half After Adding Pegs
     std::cout << "Rotating top mold half with pegs by 180 degrees..." << std::endl;
     CGAL::Aff_transformation_3<Kernel> rotate_180_around_X(
         FT(1), FT(0),  FT(0), FT(0),
@@ -518,21 +519,64 @@ int main(int argc, char* argv[]) {
         PMP::orient(top_with_pegs);
     }
 
+    // TODO: Auto-pacement. Here We Will Add The Sprue and Vents
+    // This requires some additional logic to determine the best locations
+    // and sizes for the sprue and vents based on the geometry of the part.
+    // This involves finding a high point on the part and creating a channel
+    // for the sprue, applying a boolean operation to add it to the top half
+    // using a nozzle or similar shape defined in assets/nozzle.stl.
+    // Vents can be cylindrical holes or channels that allow air to escape,
+    // positioned where the part is lowest or where air might be trapped.
 
-    // --- Save Final Mold Halves ---
+    // Create Sprue and Vents
+    // This requires some additional logic to determine the best locations
+    // and sizes for the sprue and vents based on the geometry of the part.
+    // This involves finding a high point on the part and creating a channel
+    // for the sprue, applying a boolean operation to add it to the top half
+    // using a nozzle or similar shape defined in assets/nozzle.stl.
+    // Vents can be cylindrical holes or channels that allow air to escape,
+    // positioned where the part is lowest or where air might be trapped.
+    //
+    // Something like this for sprue:
+    // FT min_z = +∞; Point_3 pv;
+    // for (auto p : input_mesh.points())
+    //   if (p.z() < min_z) { min_z = p.z(); pv = p; }
+    // sprue_center_xy = (pv.x(), pv.y()), vent_top_z = split_z + lid_thickness
+    //
+    // Then for vents:
+    // find roof plane z-height 
+    // FT roofZ = −∞;
+    // for (auto& p : input_mesh.points())
+    //   roofZ = max(roofZ, p.z());
+    //
+    // Find depth:
+    // vector<pair<FT,Point_3>> depths;
+    // for (auto& p : mesh.points())
+    //   depths.emplace_back(roofZ - p.z(), p);
+    //
+    // Sort by depth descending:
+    // sort(depths.begin(), depths.end(),
+    //    [](auto&a,auto&b){ return a.first>b.first; });
+    //
+    // Then depths[0..K] are the deepest pockets, for small parts
+    // probably only 1 vent is needed, so this can be sized by part
+    // but may take some physical experimentation to get the ratio
+    // and also depends on the material.
+    // END TODO
+
+
+    // Save Final Mold Halves
     // Assign the results of boolean operations (and rotation) back before saving
     top_half = top_with_pegs; // Assign the rotated mesh with pegs
     bottom_half = bottom_with_holes;
 
     std::cout << "Saving final mold halves..." << std::endl;
-    // Use correct filenames
     if (!CGAL::IO::write_STL(fs::path(output_dir) / "mold_top.stl", top_half)) {
         std::cerr << "Error writing final top mold half." << std::endl;
     } else {
         std::cout << "  Final top half saved successfully." << std::endl;
     }
 
-    // Use correct filenames
     if (!CGAL::IO::write_STL(fs::path(output_dir) / "mold_bottom.stl", bottom_half)) {
         std::cerr << "Error writing final bottom mold half." << std::endl;
     } else {
