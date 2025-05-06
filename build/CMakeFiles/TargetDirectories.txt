@@ -1,0 +1,3 @@
+/home/rick/Projects/Sprue/build/CMakeFiles/sprue.dir
+/home/rick/Projects/Sprue/build/CMakeFiles/edit_cache.dir
+/home/rick/Projects/Sprue/build/CMakeFiles/rebuild_cache.dir
